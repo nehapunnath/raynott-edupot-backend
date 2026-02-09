@@ -9,7 +9,7 @@ const app = express();
 app.use(cors({
   origin:[
         'http://localhost:5173',
-        // 'https://little-ville-preschool.vercel.app'
+        'https://raynott-edupot-backend.onrender.com'
     ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // optional but good
