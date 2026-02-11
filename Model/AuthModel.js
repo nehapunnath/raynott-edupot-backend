@@ -3,27 +3,29 @@ const { admin, rtdb } = require('../Config/firebaseAdmin'); // your existing con
 class AuthModel {
   
   static async verifyIdToken(idToken) {
-    try {
-      const decodedToken = await admin.auth().verifyIdToken(idToken, true); // checkRevoked: true
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken, true);
 
-      return {
-        success: true,
-        uid: decodedToken.uid,
-        email: decodedToken.email || decodedToken.email_verified ? decodedToken.email : '',
-        name: decodedToken.name || decodedToken.email?.split('@')[0] || 'User',
-        picture: decodedToken.picture || null,
-        isAdmin: !!decodedToken.admin, // custom claim
-        emailVerified: !!decodedToken.email_verified,
-      };
-    } catch (error) {
-      console.error('Token verification failed:', error.code, error.message);
-      return {
-        success: false,
-        error: error.code || 'auth/invalid-token',
-        message: error.message,
-      };
-    }
+    return {
+      success: true,
+      uid: decodedToken.uid,
+      email: decodedToken.email || '',
+      name: decodedToken.name || decodedToken.email?.split('@')[0] || 'User',
+      picture: decodedToken.picture || null,
+      isAdmin: !!decodedToken.admin,                // super admin
+      schoolId: decodedToken.schoolId || null,      // ← added for school admins
+      role: decodedToken.role || 'user',            // ← 'school_admin' or others
+      emailVerified: !!decodedToken.email_verified,
+    };
+  } catch (error) {
+    console.error('Token verification failed:', error.code, error.message);
+    return {
+      success: false,
+      error: error.code || 'auth/invalid-token',
+      message: error.message,
+    };
   }
+}
 
 
   static async getUserProfile(uid) {

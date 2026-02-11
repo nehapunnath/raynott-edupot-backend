@@ -12,7 +12,7 @@ app.use(cors({
         'https://raynott-edupot.vercel.app'
     ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // optional but good
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS','PATCH'],  // optional but good
   allowedHeaders: ['Content-Type', 'Authorization'],     // add if you use auth headers
 }));
 

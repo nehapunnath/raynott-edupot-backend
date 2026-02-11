@@ -19,7 +19,7 @@ const requireAuth = async (req, res, next) => {
     });
   }
 
-  req.user = result; // attach to request → uid, email, isAdmin, ...
+  req.user = result; 
   next();
 };
 

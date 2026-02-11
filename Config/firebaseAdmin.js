@@ -8,11 +8,12 @@ if (!admin.apps.length) {
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
     }),
-    databaseURL: process.env.FIREBASE_DATABASE, // e.g. https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
+    databaseURL: process.env.FIREBASE_DATABASE, 
   });
 }
 
 const auth = admin.auth();
 const db = admin.database();
+const rtdb = admin.database();
 
-module.exports = { admin, auth, db };
+module.exports = { admin, auth, db ,rtdb};
