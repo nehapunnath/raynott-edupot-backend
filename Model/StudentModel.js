@@ -1,0 +1,227 @@
+const { admin, rtdb } = require('../Config/firebaseAdmin');
+
+class StudentModel {
+  static STUDENTS_REF = (schoolId) => `schools/${schoolId}/students`;
+  static COUNTERS_REF = (schoolId) => `counters/schools/${schoolId}/studentCounter`;
+
+  /**
+   * Generate sequential student ID per school: STU0001, STU0002, ...
+   */
+  static async generateStudentId(schoolId) {
+    const counterRef = rtdb.ref(this.COUNTERS_REF(schoolId));
+    const result = await counterRef.transaction(
+      (current) => (current || 0) + 1,
+      (error, committed, snapshot) => {
+        if (error) throw error;
+        if (!committed) throw new Error('Transaction failed - counter not committed');
+        return snapshot.val();
+      }
+    );
+    const counterValue = result.snapshot.val();
+    return `STU${String(counterValue).padStart(4, '0')}`;
+  }
+
+  static async createStudent(schoolId, studentData) {
+    try {
+      const admissionNo = studentData.basicInfo?.admissionNo?.trim();
+      if (!admissionNo) throw new Error('Admission number is required');
+
+      // Unique admissionNo check per school
+      const existingSnap = await rtdb.ref(this.STUDENTS_REF(schoolId))
+        .orderByChild('basicInfo/admissionNo')
+        .equalTo(admissionNo)
+        .once('value');
+      if (existingSnap.exists()) {
+        throw new Error('Admission number already exists in this school');
+      }
+
+      const studentId = await this.generateStudentId(schoolId);
+
+      const fullStudent = {
+        ...studentData,
+        studentId,
+        schoolId,
+        basicInfo: {
+          ...studentData.basicInfo,
+          admissionNo,
+        },
+        createdAt: admin.database.ServerValue.TIMESTAMP,
+        updatedAt: admin.database.ServerValue.TIMESTAMP,
+        status: 'active',
+        totalPaid: studentData.totalPaid || 0,
+        pendingAmount: studentData.pendingAmount || studentData.feeStructure?.total || 0,
+      };
+
+      // Remove client-side temporary id
+      delete fullStudent.id;
+
+      await rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`).set(fullStudent);
+
+      return { success: true, studentId, student: fullStudent };
+    } catch (error) {
+      console.error('Create student error:', error);
+      return { success: false, error: error.message || 'internal-error' };
+    }
+  }
+
+  static async listStudents(schoolId) {
+    try {
+      const snapshot = await rtdb.ref(this.STUDENTS_REF(schoolId)).once('value');
+      if (!snapshot.exists()) return [];
+      const students = [];
+      snapshot.forEach((child) => {
+        students.push({ studentId: child.key, ...child.val() });
+      });
+      students.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      return students;
+    } catch (err) {
+      console.error('List students error:', err);
+      throw err;
+    }
+  }
+
+  static async getStudent(schoolId, studentId) {
+    try {
+      const snapshot = await rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`).once('value');
+      return snapshot.val() || null;
+    } catch (err) {
+      console.error('Get student error:', err);
+      return null;
+    }
+  }
+
+  static async updateStudent(schoolId, studentId, updates) {
+    try {
+      updates.updatedAt = admin.database.ServerValue.TIMESTAMP;
+      await rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`).update(updates);
+      return { success: true };
+    } catch (err) {
+      console.error('Update student error:', err);
+      return { success: false, message: err.message };
+    }
+  }
+
+  static async deleteStudent(schoolId, studentId) {
+    try {
+      await rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`).remove();
+      return { success: true };
+    } catch (err) {
+      console.error('Delete student error:', err);
+      return { success: false, message: err.message };
+    }
+  }
+
+  // === Fees Installment CRUD (mirrors FeesInstallment.jsx logic) ===
+  static async addInstallment(schoolId, studentId, installmentData) {
+    try {
+      const ref = rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`);
+      const snap = await ref.once('value');
+      const student = snap.val();
+      if (!student) throw new Error('Student not found');
+
+      const installments = student.installments || [];
+      const newInstallment = {
+        id: installmentData.id || Date.now(),
+        number: installments.length + 1,
+        amount: installmentData.amount || 0,
+        paid: 0,
+        dueDate: installmentData.dueDate || '',
+        paidDate: '',
+        status: 'pending',
+        paymentMode: installmentData.paymentMode || '',
+        notes: installmentData.notes || '',
+        ...installmentData,
+      };
+      installments.push(newInstallment);
+
+      const totalPaid = installments.reduce((sum, i) => sum + (i.paid || 0), 0);
+      const pendingAmount = (student.feeStructure?.total || 0) - totalPaid;
+
+      await ref.update({
+        installments,
+        totalPaid,
+        pendingAmount,
+        status: pendingAmount === 0 ? 'completed' : student.status || 'active',
+        updatedAt: admin.database.ServerValue.TIMESTAMP,
+      });
+
+      return { success: true, installment: newInstallment };
+    } catch (err) {
+      console.error('Add installment error:', err);
+      return { success: false, message: err.message };
+    }
+  }
+
+  static async updateInstallment(schoolId, studentId, installmentId, updates) {
+    try {
+      const ref = rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`);
+      const snap = await ref.once('value');
+      const student = snap.val();
+      if (!student) throw new Error('Student not found');
+
+      const installments = (student.installments || []).map(inst =>
+        inst.id === installmentId ? { ...inst, ...updates } : inst
+      );
+
+      const totalPaid = installments.reduce((sum, i) => sum + (i.paid || 0), 0);
+      const pendingAmount = (student.feeStructure?.total || 0) - totalPaid;
+
+      await ref.update({
+        installments,
+        totalPaid,
+        pendingAmount,
+        status: pendingAmount === 0 ? 'completed' : student.status || 'active',
+        updatedAt: admin.database.ServerValue.TIMESTAMP,
+      });
+
+      return { success: true };
+    } catch (err) {
+      console.error('Update installment error:', err);
+      return { success: false, message: err.message };
+    }
+  }
+
+  static async deleteInstallment(schoolId, studentId, installmentId) {
+    try {
+      const ref = rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`);
+      const snap = await ref.once('value');
+      const student = snap.val();
+      if (!student) throw new Error('Student not found');
+
+      let installments = (student.installments || []).filter(inst => inst.id !== installmentId);
+      installments = installments.map((inst, idx) => ({ ...inst, number: idx + 1 }));
+
+      const totalPaid = installments.reduce((sum, i) => sum + (i.paid || 0), 0);
+      const pendingAmount = (student.feeStructure?.total || 0) - totalPaid;
+
+      await ref.update({
+        installments,
+        totalPaid,
+        pendingAmount,
+        status: pendingAmount === 0 ? 'completed' : student.status || 'active',
+        updatedAt: admin.database.ServerValue.TIMESTAMP,
+      });
+
+      return { success: true };
+    } catch (err) {
+      console.error('Delete installment error:', err);
+      return { success: false, message: err.message };
+    }
+  }
+
+  // === Marks (full marks object replace – matches Marks.jsx) ===
+  static async updateMarks(schoolId, studentId, marksData) {
+    try {
+      await rtdb.ref(`${this.STUDENTS_REF(schoolId)}/${studentId}`).update({
+        marks: marksData,
+        updatedAt: admin.database.ServerValue.TIMESTAMP,
+      });
+      return { success: true };
+    } catch (err) {
+      console.error('Update marks error:', err);
+      return { success: false, message: err.message };
+    }
+  }
+}
+
+module.exports = StudentModel;

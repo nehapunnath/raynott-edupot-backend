@@ -1,0 +1,107 @@
+const StudentModel = require('../Model/StudentModel');
+
+class StudentController {
+  static async createStudent(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') {
+      return res.status(403).json({ success: false, error: 'School admin access required' });
+    }
+
+    const studentData = req.body;
+    if (!studentData.basicInfo?.name || !studentData.basicInfo?.admissionNo) {
+      return res.status(400).json({ success: false, error: 'Name and admission number required' });
+    }
+
+    const result = await StudentModel.createStudent(schoolId, studentData);
+
+    if (result.success) {
+      res.status(201).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  }
+
+  static async getAllStudents(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    try {
+      const students = await StudentModel.listStudents(schoolId);
+      res.json({ success: true, students });
+    } catch (err) {
+      res.status(500).json({ success: false, error: 'Failed to fetch students' });
+    }
+  }
+
+  static async getStudent(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { studentId } = req.params;
+    const student = await StudentModel.getStudent(schoolId, studentId);
+    if (student) {
+      res.json({ success: true, student });
+    } else {
+      res.status(404).json({ success: false, error: 'Student not found' });
+    }
+  }
+
+  static async updateStudent(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { studentId } = req.params;
+    const updates = req.body;
+    const result = await StudentModel.updateStudent(schoolId, studentId, updates);
+    res.json(result);
+  }
+
+  static async deleteStudent(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { studentId } = req.params;
+    const result = await StudentModel.deleteStudent(schoolId, studentId);
+    res.json(result);
+  }
+
+  // === Fees Installment CRUD ===
+  static async addInstallment(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') return res.status(403).json({ error: 'Forbidden' });
+    const { studentId } = req.params;
+    const result = await StudentModel.addInstallment(schoolId, studentId, req.body);
+    res.json(result);
+  }
+
+  static async updateInstallment(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') return res.status(403).json({ error: 'Forbidden' });
+    const { studentId, installmentId } = req.params;
+    const result = await StudentModel.updateInstallment(schoolId, studentId, installmentId, req.body);
+    res.json(result);
+  }
+
+  static async deleteInstallment(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') return res.status(403).json({ error: 'Forbidden' });
+    const { studentId, installmentId } = req.params;
+    const result = await StudentModel.deleteInstallment(schoolId, studentId, installmentId);
+    res.json(result);
+  }
+
+  // === Marks (full marks object) ===
+  static async updateMarks(req, res) {
+    const schoolId = req.user?.schoolId;
+    if (!schoolId || req.user.role !== 'school_admin') return res.status(403).json({ error: 'Forbidden' });
+    const { studentId } = req.params;
+    const result = await StudentModel.updateMarks(schoolId, studentId, req.body);
+    res.json(result);
+  }
+}
+
+module.exports = StudentController;
